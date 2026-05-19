@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat - DeepSeek 多模型聊天</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- 侧边栏 -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo">
+                <span class="logo-icon">✨</span>
+                <span>DeepSeek Chat</span>
+            </div>
+        </div>
+        <div style="padding: 0 10px 8px;">
+            <button class="btn-new-chat" onclick="createNewChat()" title="新建对话">
+                <span>＋</span> 新建对话
+            </button>
+        </div>
+        <div class="chat-list" id="chatList"></div>
+        <div class="sidebar-footer">
+            <p class="settings-hint">💾 数据存于本地浏览器</p>
+        </div>
+    </aside>
+
+    <!-- 主区域 -->
+    <div class="main-area" id="mainArea">
+        <div class="top-bar" id="topBar">
+            <button class="btn-toggle-sidebar" onclick="toggleSidebar()" title="折叠/展开侧边栏">☰</button>
+            <div class="top-bar-divider"></div>
+            <label>模型</label>
+            <select class="model-select" id="modelSelect" onchange="onModelChange()">
+            <option value="deepseek-v4-flash" selected>DeepSeek-V4 Flash</option>
+            <option value="deepseek-chat">DeepSeek-V3</option>
+            <option value="deepseek-reasoner">DeepSeek-R1</option>
+            <option value="deepseek-v4-pro">DeepSeek-V4 Pro</option>
+            </select>
+            <label>API Key</label>
+            <input type="password" class="api-key-input" id="apiKeyInput" placeholder="输入API Key…" onchange="onApiKeyChange()">
+            <button class="btn-role-setting" onclick="openRoleSettings()" title="角色扮演 & 头像设定">🎭 角色 & 头像</button>
+            <span style="font-size:0.7rem;color:var(--text-tertiary);margin-left:4px;white-space:nowrap;" id="roleLabel">未设置角色</span>
+        </div>
+
+        <div class="chat-messages" id="chatMessages">
+            <div class="empty-state" id="emptyState">
+                <div class="empty-icon">💬</div>
+                <h3>开始对话</h3>
+                <p>选择一个 DeepSeek 模型，输入 API Key，即可开始交流</p>
+                <p style="font-size:0.78rem;color:#aaa;">支持多轮对话 · 角色扮演 · 自定义头像 · 流式输出</p>
+            </div>
+        </div>
+
+        <div class="input-area" id="inputArea">
+            <div class="input-wrapper">
+                <textarea id="userInput" rows="1" placeholder="输入消息… (Enter发送，Shift+Enter换行)" onkeydown="handleInputKey(event)"></textarea>
+                <button class="btn-send" id="btnSend" onclick="sendMessage()" title="发送消息">➤</button>
+                <button class="btn-stop" id="btnStop" onclick="stopStreaming()" title="停止生成" style="display:none;">■</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 角色设定与头像模态框 -->
+    <div class="modal-overlay" id="roleModal" style="display:none;" onclick="closeRoleSettings(event)">
+        <div class="modal" onclick="event.stopPropagation()">
+            <h2>🎭 角色扮演 & 头像设定</h2>
+            <label>预设角色模板</label>
+            <select id="rolePreset" onchange="onRolePresetChange()">
+                <option value="custom">自定义角色</option>
+                <option value="default">默认AI助手</option>
+                <option value="programmer">编程专家 💻</option>
+                <option value="translator">翻译官 🌐</option>
+                <option value="writer">创意作家 ✍️</option>
+                <option value="teacher">知识导师 📚</option>
+                <option value="consultant">商务顾问 📊</option>
+                <option value="counselor">心理咨询 💝</option>
+                <option value="friend">知心好友 ☕</option>
+            </select>
+            <label>角色名称（可选）</label>
+            <input type="text" id="roleNameInput" placeholder="给这个角色起个名字…">
+            <label>System Prompt（角色描述与行为指导）</label>
+            <textarea id="systemPromptInput" rows="5" placeholder="描述AI的角色、行为方式、语气风格…"></textarea>
+
+            <hr style="margin: 18px 0; border: 0; border-top: 1px solid #e0e0e5;">
+            <h3 style="font-size:0.95rem; margin-bottom: 12px;">🖼️ 自定义头像</h3>
+            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 180px;">
+                    <label>👤 我的头像</label>
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                        <input type="text" id="userAvatarUrl" placeholder="头像图片URL" style="margin-bottom: 0;">
+                        <span style="font-size:0.7rem; color:#888;">或</span>
+                        <label class="btn btn-secondary" style="margin:0; padding:6px 10px; font-size:0.75rem; cursor:pointer;">
+                            📁 上传
+                            <input type="file" id="userAvatarFile" accept="image/*" style="display:none;" onchange="handleAvatarUpload('user')">
+                        </label>
+                    </div>
+                </div>
+                <div style="flex: 1; min-width: 180px;">
+                    <label>🤖 AI 头像</label>
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                        <input type="text" id="aiAvatarUrl" placeholder="头像图片URL" style="margin-bottom: 0;">
+                        <span style="font-size:0.7rem; color:#888;">或</span>
+                        <label class="btn btn-secondary" style="margin:0; padding:6px 10px; font-size:0.75rem; cursor:pointer;">
+                            📁 上传
+                            <input type="file" id="aiAvatarFile" accept="image/*" style="display:none;" onchange="handleAvatarUpload('ai')">
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="btn-row" style="margin-top: 16px;">
+                <button class="btn btn-secondary" onclick="closeRoleSettings()">取消</button>
+                <button class="btn btn-danger" onclick="clearRoleSettings()">清除角色</button>
+                <button class="btn btn-primary" onclick="saveRoleSettings()">💾 保存设定</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toastContainer"></div>
+
+    <script>
+        // ==================== 常量与配置 ====================
+        const MODEL_PRESETS = {
+            'deepseek-chat': { baseUrl: 'https://api.deepseek.com/v1', name: 'DeepSeek-V3' },
+            'deepseek-reasoner': { baseUrl: 'https://api.deepseek.com/v1', name: 'DeepSeek-R1' },
+            'deepseek-v4-flash': { baseUrl: 'https://api.deepseek.com/v1', name: 'DeepSeek-V4 Flash' },
+            'deepseek-v4-pro': { baseUrl: 'https://api.deepseek.com/v1', name: 'DeepSeek-V4 Pro' }
+        };
+
+        const ROLE_PRESETS = {
+            'default': { name: 'AI助手', prompt: '你是一个乐于助人、知识渊博的AI助手。' },
+            'programmer': { name: '编程专家', prompt: '你是一位经验丰富的编程专家，精通多种语言，提供简洁易懂的代码示例。' },
+            'translator': { name: '翻译官', prompt: '你是一位精通多国语言的专业翻译官，翻译准确、优雅。' },
+            'writer': { name: '创意作家', prompt: '你是一位富有创意的作家，文字优美生动，能调整写作风格。' },
+            'teacher': { name: '知识导师', prompt: '你是一位耐心的教育者，善用类比和实例讲解复杂知识。' },
+            'consultant': { name: '商务顾问', prompt: '你是一位商业策略顾问，提供结构化、数据驱动的建议。' },
+            'counselor': { name: '心理咨询师', prompt: '你是一位温和专业的倾听者，帮助用户理清情绪。请提醒在需要时寻求专业帮助。' },
+            'friend': { name: '知心好友', prompt: '你是用户的知心好友，温暖真诚，轻松自然。' }
+        };
+
+        const STORAGE_KEY = 'ai_chat_app_data';
+        const SETTINGS_KEY = 'ai_chat_app_settings';
+
+        // ==================== 全局状态 ====================
+        let appData = { chats: [], activeChatId: null };
+        let appSettings = {
+            defaultModel: 'deepseek-v4-flash',
+            defaultBaseUrl: 'https://api.deepseek.com/v1',
+            defaultApiKey: '',
+            defaultSystemPrompt: '你是一个乐于助人、知识渊博的AI助手。',
+            defaultRoleName: '',
+            defaultUserAvatar: '',
+            defaultAiAvatar: '',
+            sidebarCollapsed: false
+        };
+        let currentAbortController = null;
+        let isStreaming = false;
+
+        // ==================== DOM 引用 ====================
+        const $sidebar = document.getElementById('sidebar');
+        const $chatList = document.getElementById('chatList');
+        const $chatMessages = document.getElementById('chatMessages');
+        const $userInput = document.getElementById('userInput');
+        const $btnSend = document.getElementById('btnSend');
+        const $btnStop = document.getElementById('btnStop');
+        const $modelSelect = document.getElementById('modelSelect');
+        const $apiKeyInput = document.getElementById('apiKeyInput');
+        const $roleLabel = document.getElementById('roleLabel');
+        const $roleModal = document.getElementById('roleModal');
+        const $rolePreset = document.getElementById('rolePreset');
+        const $roleNameInput = document.getElementById('roleNameInput');
+        const $systemPromptInput = document.getElementById('systemPromptInput');
+        const $userAvatarUrl = document.getElementById('userAvatarUrl');
+        const $aiAvatarUrl = document.getElementById('aiAvatarUrl');
+        const $toastContainer = document.getElementById('toastContainer');
+
+        // ==================== 存储与工具函数 ====================
+        function loadData() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (raw) appData = JSON.parse(raw);
+                if (!Array.isArray(appData.chats)) appData.chats = [];
+                if (!appData.activeChatId && appData.chats.length > 0) {
+                    appData.activeChatId = appData.chats[0].id;
+                }
+            } catch (e) { appData = { chats: [], activeChatId: null }; }
+            try {
+                const rawS = localStorage.getItem(SETTINGS_KEY);
+                if (rawS) {
+                    const s = JSON.parse(rawS);
+                    appSettings = { ...appSettings, ...s };
+                }
+            } catch (e) {}
+        }
+
+        function saveData() {
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(appData)); } catch (e) {}
+        }
+
+        function saveSettings() {
+            try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(appSettings)); } catch (e) {}
+        }
+
+        function generateId() { return 'chat_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8); }
+
+        function showToast(msg) {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = msg;
+            $toastContainer.appendChild(toast);
+            setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 2400);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatTime(ts) {
+            const d = new Date(ts);
+            return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        // ==================== 侧边栏与对话管理 ====================
+        function toggleSidebar() {
+            appSettings.sidebarCollapsed = !appSettings.sidebarCollapsed;
+            if (appSettings.sidebarCollapsed) $sidebar.classList.add('collapsed');
+            else $sidebar.classList.remove('collapsed');
+            saveSettings();
+        }
+
+        function renderChatList() {
+            $chatList.innerHTML = '';
+            if (appData.chats.length === 0) {
+                $chatList.innerHTML = '<div style="text-align:center;color:#666680;padding:30px 16px;font-size:0.8rem;">暂无对话<br>点击上方按钮创建</div>';
+                return;
+            }
+            appData.chats.forEach(chat => {
+                const item = document.createElement('div');
+                item.className = 'chat-item' + (chat.id === appData.activeChatId ? ' active' : '');
+                item.innerHTML = `
+                    <span class="chat-icon">💬</span>
+                    <span class="chat-title" title="${escapeHtml(chat.title)}">${escapeHtml(chat.title)}</span>
+                    <span class="chat-actions">
+                        <button class="btn-icon-sm" title="删除对话" onclick="event.stopPropagation();deleteChat('${chat.id}')">🗑</button>
+                    </span>`;
+                item.addEventListener('click', () => switchChat(chat.id));
+                $chatList.appendChild(item);
+            });
+        }
+
+        function switchChat(chatId) {
+            if (isStreaming) stopStreaming();
+            appData.activeChatId = chatId;
+            saveData();
+            refreshUI();
+        }
+
+        function createNewChat() {
+            if (isStreaming) stopStreaming();
+            const chat = {
+                id: generateId(),
+                title: '新对话',
+                model: appSettings.defaultModel,
+                baseUrl: 'https://api.deepseek.com/v1',
+                apiKey: appSettings.defaultApiKey,
+                systemPrompt: appSettings.defaultSystemPrompt,
+                roleName: appSettings.defaultRoleName,
+                userAvatar: appSettings.defaultUserAvatar || '',
+                aiAvatar: appSettings.defaultAiAvatar || '',
+                messages: [],
+                createdAt: Date.now(),
+                updatedAt: Date.now()
+            };
+            appData.chats.unshift(chat);
+            appData.activeChatId = chat.id;
+            saveData();
+            refreshUI();
+            $userInput.focus();
+            showToast('✅ 新对话已创建');
+        }
+
+        function deleteChat(chatId) {
+            if (isStreaming && getActiveChat() && getActiveChat().id === chatId) stopStreaming();
+            const idx = appData.chats.findIndex(c => c.id === chatId);
+            if (idx === -1) return;
+            appData.chats.splice(idx, 1);
+            appData.activeChatId = appData.chats.length > 0 ? appData.chats[0].id : null;
+            saveData();
+            refreshUI();
+            showToast('🗑 已删除对话');
+        }
+
+        function getActiveChat() {
+            return appData.chats.find(c => c.id === appData.activeChatId) || null;
+        }
+
+        // ==================== UI 刷新 ====================
+        function updateRoleLabel(chat) {
+            if (chat) {
+                if (chat.roleName) {
+                    $roleLabel.textContent = '角色: ' + chat.roleName;
+                    $roleLabel.style.color = 'var(--accent)';
+                } else if (chat.systemPrompt && chat.systemPrompt !== appSettings.defaultSystemPrompt) {
+                    $roleLabel.textContent = '已自定义角色';
+                    $roleLabel.style.color = 'var(--accent)';
+                } else {
+                    $roleLabel.textContent = '未设置角色';
+                    $roleLabel.style.color = 'var(--text-tertiary)';
+                }
+            } else {
+                $roleLabel.textContent = '未设置角色';
+                $roleLabel.style.color = 'var(--text-tertiary)';
+            }
+        }
+
+        function renderMessages(chat) {
+            $chatMessages.innerHTML = '';
+            if (!chat || chat.messages.length === 0) {
+                const emptyDiv = document.createElement('div');
+                emptyDiv.className = 'empty-state';
+                emptyDiv.innerHTML = `<div class="empty-icon">💬</div><h3>开始对话</h3><p>在下方输入消息，与AI开始交流</p>`;
+                $chatMessages.appendChild(emptyDiv);
+                return;
+            }
+            chat.messages.forEach(msg => {
+                const div = document.createElement('div');
+                div.className = 'message ' + msg.role;
+                const avatarHtml = getAvatarHtml(chat, msg.role);
+                div.innerHTML = `
+                    <div class="msg-avatar">${avatarHtml}</div>
+                    <div>
+                        <div class="msg-content">${renderMarkdown(msg.content)}</div>
+                        <div class="msg-time">${formatTime(msg.timestamp)}</div>
+                    </div>`;
+                if (msg.role === 'assistant' && msg.content) {
+                    const contentDiv = div.querySelector('.msg-content');
+                    const copyBtn = document.createElement('button');
+                    copyBtn.className = 'copy-btn';
+                    copyBtn.textContent = '📋';
+                    copyBtn.title = '复制内容';
+                    copyBtn.addEventListener('click', () => copyMessageContent(msg.content, copyBtn));
+                    contentDiv.appendChild(copyBtn);
+                }
+                $chatMessages.appendChild(div);
+            });
+            scrollToBottom();
+        }
+
+        function getAvatarHtml(chat, role) {
+            const url = role === 'user' ? chat.userAvatar : chat.aiAvatar;
+            if (url && url.trim() !== '') {
+                return `<img src="${escapeHtml(url)}" alt="avatar" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
+            }
+            return role === 'user' ? '👤' : '🤖';
+        }
+
+        function renderMarkdown(text) {
+            if (!text) return '';
+            let html = text;
+            html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+            html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+            html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+            html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+            html = html.replace(/\n/g, '<br>');
+            return html;
+        }
+
+        function copyMessageContent(content, btn) {
+            navigator.clipboard.writeText(content).then(() => {
+                btn.textContent = '✓';
+                btn.classList.add('copied');
+                setTimeout(() => { btn.textContent = '📋'; btn.classList.remove('copied'); }, 1800);
+            }).catch(() => {
+                const ta = document.createElement('textarea');
+                ta.value = content;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                btn.textContent = '✓';
+                btn.classList.add('copied');
+                setTimeout(() => { btn.textContent = '📋'; btn.classList.remove('copied'); }, 1800);
+            });
+            showToast('📋 已复制到剪贴板');
+        }
+
+        function scrollToBottom() {
+            requestAnimationFrame(() => { $chatMessages.scrollTop = $chatMessages.scrollHeight; });
+        }
+
+        function refreshUI() {
+            renderChatList();
+            const chat = getActiveChat();
+            if (chat) {
+                $modelSelect.value = chat.model;
+                $apiKeyInput.value = chat.apiKey || '';
+                updateRoleLabel(chat);
+                renderMessages(chat);
+            } else {
+                $modelSelect.value = appSettings.defaultModel;
+                $apiKeyInput.value = appSettings.defaultApiKey || '';
+                $roleLabel.textContent = '未设置角色';
+                $chatMessages.innerHTML = '<div class="empty-state"><div class="empty-icon">💬</div><h3>开始对话</h3><p>选择一个模型，输入API Key，即可开始交流</p></div>';
+            }
+            if (appSettings.sidebarCollapsed) $sidebar.classList.add('collapsed');
+            else $sidebar.classList.remove('collapsed');
+            updateSendButton();
+        }
+
+        // ==================== 输入处理 ====================
+        function handleInputKey(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+
+        function updateSendButton() {
+            const hasText = $userInput.value.trim().length > 0;
+            if (isStreaming) {
+                $btnSend.style.display = 'none';
+                $btnStop.style.display = 'flex';
+            } else {
+                $btnSend.style.display = 'flex';
+                $btnStop.style.display = 'none';
+                $btnSend.disabled = !hasText;
+            }
+        }
+
+        $userInput.addEventListener('input', () => {
+            updateSendButton();
+            $userInput.style.height = 'auto';
+            $userInput.style.height = Math.min($userInput.scrollHeight, 180) + 'px';
+        });
+
+        function onModelChange() {
+            const val = $modelSelect.value;
+            const chat = getActiveChat();
+            if (chat) {
+                chat.model = val;
+                chat.baseUrl = 'https://api.deepseek.com/v1';
+                saveData();
+            } else {
+                appSettings.defaultModel = val;
+                saveSettings();
+            }
+        }
+
+        function onApiKeyChange() {
+            const val = $apiKeyInput.value.trim();
+            const chat = getActiveChat();
+            if (chat) {
+                chat.apiKey = val;
+                saveData();
+            } else {
+                appSettings.defaultApiKey = val;
+                saveSettings();
+            }
+        }
+
+        // ==================== API 调用与流式传输 ====================
+        async function sendMessage() {
+            if (isStreaming) return;
+            const content = $userInput.value.trim();
+            if (!content) return;
+            let chat = getActiveChat();
+            if (!chat) {
+                createNewChat();
+                await new Promise(r => setTimeout(r, 150));
+                chat = getActiveChat();
+                if (!chat) return;
+            }
+            if (!chat.apiKey) {
+                showToast('⚠️ 请先输入 API Key');
+                $apiKeyInput.focus();
+                return;
+            }
+
+            const userMsg = { role: 'user', content: content, timestamp: Date.now() };
+            chat.messages.push(userMsg);
+            chat.updatedAt = Date.now();
+            if (chat.title === '新对话') {
+                chat.title = content.slice(0, 30) + (content.length > 30 ? '…' : '');
+            }
+            saveData();
+            refreshUI();
+            $userInput.value = '';
+            $userInput.style.height = 'auto';
+            updateSendButton();
+
+            const aiMsg = { role: 'assistant', content: '', timestamp: Date.now() };
+            chat.messages.push(aiMsg);
+            saveData();
+            renderMessages(chat);
+            isStreaming = true;
+            updateSendButton();
+
+            // 新增：获取最后一条 AI 消息的内容容器引用
+            const aiContentDiv = document.querySelector('.message.assistant:last-child .msg-content');
+
+           // 构建上下文：system prompt + 最近 20 轮对话（40 条消息）
+const CONTEXT_ROUNDS = 100; // 保留最近 20 轮对话
+const recentMessages = chat.messages.slice(0, -1); // 排除刚添加的空 AI 消息
+const contextMessages = recentMessages.slice(-(CONTEXT_ROUNDS * 2)); // 每轮=用户+AI，共2条
+
+const messages = [
+    { role: 'system', content: chat.systemPrompt || appSettings.defaultSystemPrompt },
+    ...contextMessages
+];
+
+// 可选：添加 token 估算警告
+if (JSON.stringify(messages).length > 8000) {
+    console.warn('⚠️ 上下文较长，建议开始新对话');
+}
+
+            currentAbortController = new AbortController();
+            try {
+                const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${chat.apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: chat.model,
+                        messages: messages,
+                        stream: true
+                    }),
+                    signal: currentAbortController.signal
+                });
+
+                if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error(`API错误 ${response.status}: ${errText.slice(0, 200)}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let fullContent = '';
+                const aiMsgIndex = chat.messages.length - 1;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n');
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = line.slice(6);
+                            if (data === '[DONE]') continue;
+                            try {
+                                const json = JSON.parse(data);
+                                const delta = json.choices?.[0]?.delta?.content;
+                                if (delta) {
+                                    fullContent += delta;
+                                    chat.messages[aiMsgIndex].content = fullContent;
+                                    chat.updatedAt = Date.now();
+                                    saveData();
+                                     // 逐字更新 DOM，不重新渲染整个列表
+                                    if (aiContentDiv) {
+        // 移除旧的流式光标
+                                        const oldCursor = aiContentDiv.querySelector('.streaming-cursor');
+                                         if (oldCursor) oldCursor.remove();
+        
+        // 更新内容 + 添加流式光标
+                                         aiContentDiv.innerHTML = renderMarkdown(fullContent) + '<span class="streaming-cursor"></span>';
+    }
+    
+    scrollToBottom();
+}
+                            } catch (e) {}
+                        }
+                    }
+                }
+                chat.messages[aiMsgIndex].content = fullContent;
+                chat.updatedAt = Date.now();
+saveData();  // 只保存一次
+
+// 移除流式光标，渲染最终完整消息（带复制按钮等）
+if (aiContentDiv) {
+    aiContentDiv.innerHTML = renderMarkdown(fullContent);
+    // 手动添加复制按钮
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'copy-btn';
+    copyBtn.textContent = '📋';
+    copyBtn.title = '复制内容';
+    copyBtn.addEventListener('click', () => copyMessageContent(fullContent, copyBtn));
+    aiContentDiv.appendChild(copyBtn);
+}
+            } catch (e) {
+                if (e.name !== 'AbortError') {
+                    chat.messages[chat.messages.length - 1].content = `❌ 错误: ${e.message}`;
+                    showToast('⚠️ 请求失败');
+                }
+            }
+            isStreaming = false;
+            currentAbortController = null;
+            saveData();
+            refreshUI();
+            updateSendButton();
+        }
+
+       /* function renderMessagesStream(chat) {
+            $chatMessages.innerHTML = '';
+            chat.messages.forEach(msg => {
+                const div = document.createElement('div');
+                div.className = 'message ' + msg.role;
+                const avatarHtml = getAvatarHtml(chat, msg.role);
+                div.innerHTML = `
+                    <div class="msg-avatar">${avatarHtml}</div>
+                    <div>
+                        <div class="msg-content">${renderMarkdown(msg.content)}${msg.role === 'assistant' && isStreaming ? '<span class="streaming-cursor"></span>' : ''}</div>
+                        <div class="msg-time">${formatTime(msg.timestamp)}</div>
+                    </div>`;
+                $chatMessages.appendChild(div);
+            });
+            scrollToBottom();
+        }*/
+
+        function stopStreaming() {
+            if (currentAbortController) {
+                currentAbortController.abort();
+                currentAbortController = null;
+            }
+            isStreaming = false;
+            saveData();
+            refreshUI();
+            updateSendButton();
+        }
+
+        // ==================== 角色设定与头像管理 ====================
+        function openRoleSettings() {
+            const chat = getActiveChat();
+            if (chat) {
+                $roleNameInput.value = chat.roleName || '';
+                $systemPromptInput.value = chat.systemPrompt || appSettings.defaultSystemPrompt;
+                $userAvatarUrl.value = chat.userAvatar || '';
+                $aiAvatarUrl.value = chat.aiAvatar || '';
+                $rolePreset.value = 'custom';
+            } else {
+                $roleNameInput.value = appSettings.defaultRoleName || '';
+                $systemPromptInput.value = appSettings.defaultSystemPrompt;
+                $userAvatarUrl.value = appSettings.defaultUserAvatar || '';
+                $aiAvatarUrl.value = appSettings.defaultAiAvatar || '';
+                $rolePreset.value = 'default';
+            }
+            $roleModal.style.display = 'flex';
+            // 清除文件选择器
+            document.getElementById('userAvatarFile').value = '';
+            document.getElementById('aiAvatarFile').value = '';
+        }
+
+        function closeRoleSettings(event) {
+            if (!event || event.target === $roleModal) $roleModal.style.display = 'none';
+        }
+
+        function onRolePresetChange() {
+            const preset = ROLE_PRESETS[$rolePreset.value];
+            if (preset && $rolePreset.value !== 'custom') {
+                $roleNameInput.value = preset.name;
+                $systemPromptInput.value = preset.prompt;
+            }
+        }
+
+        async function handleAvatarUpload(type) {
+            const fileInput = document.getElementById(type === 'user' ? 'userAvatarFile' : 'aiAvatarFile');
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            // 限制大小 200KB
+            if (file.size > 200 * 1024) {
+                showToast('⚠️ 图片大小不能超过200KB');
+                return;
+            }
+
+            try {
+                const base64 = await fileToBase64(file);
+                if (type === 'user') {
+                    $userAvatarUrl.value = base64;
+                } else {
+                    $aiAvatarUrl.value = base64;
+                }
+            } catch (e) {
+                showToast('⚠️ 图片读取失败');
+            }
+        }
+
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function saveRoleSettings() {
+            const chat = getActiveChat();
+            const name = $roleNameInput.value.trim();
+            const prompt = $systemPromptInput.value.trim();
+            const userAvatar = $userAvatarUrl.value.trim();
+            const aiAvatar = $aiAvatarUrl.value.trim();
+
+            if (chat) {
+                chat.roleName = name;
+                chat.systemPrompt = prompt;
+                chat.userAvatar = userAvatar;
+                chat.aiAvatar = aiAvatar;
+                saveData();
+            } else {
+                appSettings.defaultRoleName = name;
+                appSettings.defaultSystemPrompt = prompt;
+                appSettings.defaultUserAvatar = userAvatar;
+                appSettings.defaultAiAvatar = aiAvatar;
+                saveSettings();
+            }
+            refreshUI();
+            $roleModal.style.display = 'none';
+            showToast('✅ 设定已保存');
+        }
+
+        function clearRoleSettings() {
+            const chat = getActiveChat();
+            if (chat) {
+                chat.roleName = '';
+                chat.systemPrompt = appSettings.defaultSystemPrompt;
+                chat.userAvatar = '';
+                chat.aiAvatar = '';
+                saveData();
+            } else {
+                appSettings.defaultRoleName = '';
+                appSettings.defaultSystemPrompt = '你是一个乐于助人、知识渊博的AI助手。';
+                appSettings.defaultUserAvatar = '';
+                appSettings.defaultAiAvatar = '';
+                saveSettings();
+            }
+            refreshUI();
+            $roleModal.style.display = 'none';
+            showToast('🗑 角色与头像已清除');
+        }
+
+        // 初始化
+        loadData();
+        refreshUI();
+    </script>
+</body>
+</html>
